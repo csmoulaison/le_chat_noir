@@ -1,0 +1,88 @@
+STRAY OBSERVATIONS
+-)  vk_allocate_memory is only called by 2 functions: 
+	1)  vk_allocate_image, called in 2 places:
+		1)  vk_swapchain:  Render and depth images.
+		2~) vk_allocate:   Called by vk_allocate_texture.
+
+	2)  vk_allocate_buffer, called in 4 places:
+		1)  vk_init:      Host visible memory buffer.
+		2)  vk_init:      Staging vertex buffer for device local memory.
+		3)  vk_init:      Staging index  buffer for device local memory.
+		4~) vk_allocate:  Called by vk_allocate_texture.
+
+-)  Therefore, there are only 4 meaninful calls to vk_allocate_memory:
+	1)  (image)   vk_swapchain:151  Render and depth images.
+	2)  (buffer)  vk_init:224       Host visible memory buffer.
+	3)  (buffer)  vk_init:348       Staging vertex buffer for device local memory.
+	4)  (buffer)  vk_init:370       Staging index  buffer for device local memory.
+
+Stepping line by line through flyshoot in gdb, the following sequence is observed:
+
+INSTANCE, DEVICE, AND SURFACE CREATION
+
+1)  An instance is created with a given program name and vulkan API version. Window 
+	extensions are copied from those passed in by xcb, and debug extensions are 
+	added if necessary. Validation layers are configured.
+
+2)  Vulkan calls back into XCB to create the Xcb surface.
+
+3)  The physical devices onboard are queried and chosen based on:
+	-)  The queue families available, looking for graphics, which implies present.
+	-)  The extensions onboard, looking for swapchain, and dynamic rendering.
+	The sample count is stored, whatever it is.
+
+4)  A logical device is created, creating a device queue for graphics. Dynamic
+	rendering features are applied, and the graphics queue index is stored.
+
+SWAPCHAIN CREATION
+
+5)  The swapchain is created with vk_create_swapchain, performing the following:
+	1)	Clean old resources in the case we are calling this between active frames.
+	2)	Query the capabilities of the surface. (I think this needs to be changed
+	  	on the XCB side, which is kind of brittle now that we're here. Confirm.)
+	3)	Get the format for the new surface.
+	4)	Choose a present mode for the surface.
+	5)	Allocates image memory for the render and depth images. 
+	5)	Creates the image views associated with the following:
+		-)  Swapchain images
+		-)  Render image
+		-)  Depth images
+	6)  Creates the following synchonization semaphores for:
+		-)  Signaling when a swapchain image is available.
+		-)  When rendering has finished.
+
+MEMORY ALLOCATIONS TAKE 1
+
+6)  A buffer is allocated for host (CPU) visible memory. This is used for both
+	instance and global uniform buffer objects.
+	?)  Does this have any significant redundancy with other times buffers are
+	allocated?
+
+PIPELINE CREATION
+
+7)  Graphics pipelines are created, which involves the following:
+	-)  Defining pipeline-specific descriptors, attributes, and shader code.
+	-)  Create descriptor bindings, layouts, pools, and then allocate.
+	-)  Apply shaders to the appropriate pipeline stages.
+	-)  Create vertex attribute bindings.
+	-)  Define loads of other shit and then create the pipeline, 
+	-)  Destroy shader modules that were created only for the pipeline creation 
+		process.
+	?)  Can we inline graphics pipeline creation?
+		-)  Any structures that are not dependent on pipeline specific data should be
+			hoisted out of this for loop.
+
+MEMORY ALLOCATIONS TAKE 2
+
+8)  The permanent command pool is created and the one command buffer is allocated.
+	?)  vkAllocateCommandBuffers is called here. Is this also done in
+		vk_allocate_one_time_command_buffer? The same command pool is used for all.
+
+9)  The device (GPU) local memory buffer is created, which is used for holding
+	vertex and index data.
+	?)  The name device_local_memory is a bit of a misnomer, as device local images
+		are not included. Change name to reference mesh memory for now?
+	?)  Can the redundant process for vertex+index buffers be for looped inline?
+
+10) A temporary command buffer is created to move this data from the staging
+	buffer onto the device itself.

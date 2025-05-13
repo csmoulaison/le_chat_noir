@@ -1,0 +1,57 @@
+RENDERER: USABLE SPECIFICATION
+-) High-level: set us up to be able to abandon the renderer for a time while we
+   prototype the game.
+-) Rendering textured meshes in a reasonable manner.
+-) Imgui layer for debug output and prototyping UI.
+
+RENDERER: SECOND PASS SPECIFICATION
+-) Goal: be able to animate our character and prototype lighting based gameplay.
+-) Skinned meshes for animation.
+-) Something for calculating hard lighting 
+
+RENDERER: MAJOR TASKS
+-) Take a pass at refactoring vulkan loop.
+-) Look at todos again.
+-) Create new UBO structure. Probably want one for an imgui layer for now.
+
+NOTE - While doing these, keep refactoring old code to new standards, including:
+-) Curly braces for initialization, no implicit zeroing of Vulkan stuff. gotta
+   look at the spec.
+-) Inlining repeated calls with initialization structures and for loops.
+-) VK_VERIFY unless we need to look at specific error codes, as when checking
+   for swapchain recreation.
+
+GAME: DESIGN
+-) This game is a collectathon but with information-based keys and locks.
+-) The player is a cat burglar and uses stealth, investigation, and sabotage 
+   to progress. They are agile and do jumps and stuff to navigate around the 
+   city.
+-) The player is driven by the goal of collecting art, either to progress or as
+   the goal in of itself.
+-) The game loop involves finding information about, planning, and executing
+   heists.
+-) Intimate of the city and its inhabitants is required both to progress and to
+   discover hidden elements of the game.
+
+GAME: PROTOTYPES
+-) Isometric camera following a moving player, area traversal.
+   ?) Entirely node based, no physics, just flat planes, line and curves, and nodes.
+   ?) Point in direction, hopefully close enough to node.
+   ?) Sly Cooper platforming with physics.
+   Of course, before prototyping, take a while to study cats.
+-) Lighting based stealth.
+-) Lazers.
+
+GAME: SYSTEMS
+-) Dialogue system with many arbitary side effects. Can this just be an event
+   enum and a void pointer? Each character just calls code upon being talked to.
+-) Complex movement set, maybe with physics, involving node traversal.
+-) Robust camera system for working with varying urban environments.
+-) User interface, both on-screen and in-world.
+-) Audio engine possibly with 3-dimensionality.
+-) Enemy AI of unknown complexity.
+-) Day/night cycle with NPC routines.
+-) Stealth detection system with lighting based sneakiness.
+-) Various information managemement tools for the player.
+-) Many development tools for editing game content, including levels.
+-) Player progression with collectables.
