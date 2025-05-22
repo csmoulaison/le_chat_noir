@@ -18,11 +18,14 @@ VkResult vk_verify_macro_result;
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_BMP
-#include "../extern/stb_image.h"
+#include "../extern/stb/stb_image.h"
 
 #include "vk_structs.c"
 #include "vk_static_data.c"
+#include "vk_barrier.c"
+#include "vk_command_buffer.c"
 #include "vk_allocate.c"
+#include "vk_image_view.c"
 #include "vk_shader.c"
 #include "vk_swapchain.c"
 #include "vk_pipeline.c"

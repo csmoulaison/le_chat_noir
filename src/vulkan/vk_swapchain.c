@@ -151,49 +151,40 @@ void vk_init_swapchain(struct vk_context* vk, bool recreate)
 		vk_allocate_image(vk->device, vk->physical_device, &allocs[i]);
 	}
 
-
 	// Create image views.
-	uint8_t view_configs_len = IMAGE_ALLOCATIONS_LEN + vk->swap_images_len;
-	struct view_config 
-	{
-		VkImageView*       view;
-		VkImage            image;
-		VkFormat           format;
-		VkImageAspectFlags aspect_mask;
-	} view_configs[view_configs_len] = {};
-
-	view_configs[0].view        = &vk->render_view;
-	view_configs[0].image       = vk->render_image;
-	view_configs[0].format      = vk->surface_format.format;
-	view_configs[0].aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
-	view_configs[1].view        = &vk->depth_view;
-	view_configs[1].image       = vk->depth_image;
-	view_configs[1].format      = DEPTH_ATTACHMENT_FORMAT;
-	view_configs[1].aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	for(int i = 0; i < vk->swap_images_len; i++) 
-	{
-		view_configs[IMAGE_ALLOCATIONS_LEN + i] = (struct view_config)
+	vk_create_image_view(
+		vk->device, 
+		(struct vk_image_view_config)
 		{
-			.view        = &vk->swap_views[i],
-			.image       = vk->swap_images[i],
+			.view        = &vk->render_view,
+			.image       = vk->render_image,
 			.format      = vk->surface_format.format,
 			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT
-		};
-	}
+		}
+	);
 
-	for(uint32_t i = 0; i < view_configs_len; i++)
+	vk_create_image_view(
+		vk->device, 
+		(struct vk_image_view_config)
+		{
+			.view        = &vk->depth_view,
+			.image       = vk->depth_image,
+			.format      = DEPTH_ATTACHMENT_FORMAT,
+			.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT
+		});
+
+
+	for(int i = 0; i < vk->swap_images_len; i++) 
 	{
-		VkImageViewCreateInfo view_info = {};
-		view_info.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_info.image                           = view_configs[i].image;
-		view_info.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-		view_info.format                          = view_configs[i].format;
-		view_info.subresourceRange.aspectMask     = view_configs[i].aspect_mask;
-		view_info.subresourceRange.baseMipLevel   = 0;
-		view_info.subresourceRange.levelCount     = 1;
-		view_info.subresourceRange.baseArrayLayer = 0;
-		view_info.subresourceRange.layerCount     = 1;
-		VK_VERIFY(vkCreateImageView(vk->device, &view_info, 0, view_configs[i].view));
+		vk_create_image_view(
+			vk->device, 
+			(struct vk_image_view_config)
+			{
+				.view        = &vk->swap_views[i],
+				.image       = vk->swap_images[i],
+				.format      = vk->surface_format.format,
+				.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT
+			});
 	}
 
 	// Create synchronization primitives

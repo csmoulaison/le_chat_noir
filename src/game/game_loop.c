@@ -1,24 +1,5 @@
 #define MAX_NETWORK_LINES 4
 
-// TODO - overview
-// * Dynamic up vector. Always up based on current forward? Think about what
-//   that means.
-// * Aspect ratio correction on reticle.
-// * Resolution independence of CAMERA_RETICLE_OFFSET_MOD, which scales the
-//   reticle offset and is currently resolution dependent.
-// * Raycast from camera to hitting cube.
-// * Cube knockback - change rotation based on hit normal and current rotation,
-//   and knockback in reverse direction of normal (offset by our current speed,
-//   of course).
-// * Visual effect for hitting cube. Maybe flashes white momentarily. That
-//   effect could even be the same as the bullet disappearing when fired at the UI
-//   level.
-// * When camera is hit by cube:
-//   - Pause logic update: cubes blink out of existence one at a time at random.
-//     Directly after the last disappears, the game restarts, seamlessly
-//     spawning new cubes that come towards you immediately.
-// * Don't bother with collision between cubes, I think.
-
 void game_loop(
     void*                mem,
     size_t               mem_bytes,

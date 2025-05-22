@@ -1,16 +1,26 @@
+struct vk_descriptor_config
+{
+	VkDescriptorType   type;
+	VkShaderStageFlags stage_flags;
+	VkDeviceSize       offset_in_buffer;
+	VkDeviceSize       range_in_buffer;
+};
+
 struct vk_context vk_init(struct vk_platform* platform)
 {
 	struct vk_context vk;
 
 	// Create instance.
-	VkApplicationInfo app = {};
-	app.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	app.pNext              = 0;
-	app.pApplicationName   = PROGRAM_NAME;
-	app.applicationVersion = 1;
-	app.pEngineName        = 0;
-	app.engineVersion      = 0;
-	app.apiVersion         = VK_API_VERSION_1_3;
+	VkApplicationInfo app = 
+	{
+		.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+		.pNext              = 0,
+		.pApplicationName   = PROGRAM_NAME,
+		.applicationVersion = 1,
+		.pEngineName        = 0,
+		.engineVersion      = 0,
+		.apiVersion         = VK_API_VERSION_1_3
+	};
 
 	uint32_t exts_len = platform->window_extensions_len;
 
@@ -28,12 +38,6 @@ struct vk_context vk_init(struct vk_platform* platform)
 		exts[exts_len - 1] = debug_ext;
 #endif
 
-	VkInstanceCreateInfo inst_info = {};
-	inst_info.sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	inst_info.pNext            = 0;
-	inst_info.flags            = 0;
-	inst_info.pApplicationInfo = &app;
-
 	uint32_t layers_len = 0;
 
 	#ifdef VK_DEBUG
@@ -46,24 +50,26 @@ struct vk_context vk_init(struct vk_platform* platform)
 		layers[layers_len - 1] = "VK_LAYER_KHRONOS_validation";
 #endif
 
-	inst_info.enabledLayerCount = layers_len;
-	inst_info.ppEnabledLayerNames = layers;
-
-	inst_info.enabledExtensionCount = exts_len;
-	inst_info.ppEnabledExtensionNames = exts;
-
+	VkInstanceCreateInfo inst_info = 
+	{
+		.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pNext                   = 0,
+		.flags                   = 0,
+		.pApplicationInfo        = &app,
+		.enabledLayerCount       = layers_len,
+		.ppEnabledLayerNames     = layers,
+		.enabledExtensionCount   = exts_len,
+		.ppEnabledExtensionNames = exts
+	};
 	VK_VERIFY(vkCreateInstance(&inst_info, 0, &vk.instance));
 
-	// Create surface.
+	// Create surface using the platform specific callback function.
 	VK_VERIFY(platform->create_surface_callback(&vk, platform->context));
 
 	// Create physical device.
 	uint32_t devices_len;
-
 	VK_VERIFY(vkEnumeratePhysicalDevices(vk.instance, &devices_len, 0));
-
 	VkPhysicalDevice devices[devices_len];
-
 	VK_VERIFY(vkEnumeratePhysicalDevices(vk.instance, &devices_len, devices));
 
 	vk.physical_device = 0;
@@ -124,10 +130,20 @@ struct vk_context vk_init(struct vk_platform* platform)
 			continue;
 		}
 
+		VkPhysicalDeviceFeatures features = {};
+		vkGetPhysicalDeviceFeatures(devices[i], &features);
+		if(features.samplerAnisotropy != VK_TRUE)
+		{
+			continue;
+		}
+
 		vk.physical_device = devices[i];
 
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(vk.physical_device, &properties);
+
+		vk.max_sampler_anisotropy = properties.limits.maxSamplerAnisotropy;
+
 		VkSampleCountFlags sample_counts = properties.limits.framebufferColorSampleCounts; //& properties.limits.framebufferDepthSampleCounts;
 		if(sample_counts & VK_SAMPLE_COUNT_64_BIT) 
 		{ 
@@ -167,35 +183,44 @@ struct vk_context vk_init(struct vk_platform* platform)
 	}
 
 	// Create logical device.
-	VkDeviceQueueCreateInfo queue = {};
-	queue.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queue.pNext            = 0;
-	queue.flags            = 0;
-	queue.queueFamilyIndex = graphics_family_idx;
-	queue.queueCount       = 1; // 1 because only 1 queue, right?
 	float priority         = 1.0f;
- 	queue.pQueuePriorities = &priority;
+	VkDeviceQueueCreateInfo queue = 
+	{
+		.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+		.pNext            = 0,
+		.flags            = 0,
+		.queueFamilyIndex = graphics_family_idx,
+		.queueCount       = 1,
+ 		.pQueuePriorities = &priority
+	};
 
- 	VkPhysicalDeviceDynamicRenderingFeatures dynamic_features = {};
-	dynamic_features.sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
-	dynamic_features.pNext            = 0;
-	dynamic_features.dynamicRendering = VK_TRUE;
+ 	VkPhysicalDeviceDynamicRenderingFeatures dynamic_features = 
+ 	{
+		.sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+		.pNext            = 0,
+		.dynamicRendering = VK_TRUE
+ 	};
 
-
-	VkPhysicalDeviceFeatures2 features = {};
-	features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	features.pNext = &dynamic_features;
-	vkGetPhysicalDeviceFeatures2(vk.physical_device, &features);
+	// Zero init for this one because there's a lot of features.
+	VkPhysicalDeviceFeatures2 features2 = {};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features2.pNext = &dynamic_features;
+	vkGetPhysicalDeviceFeatures2(vk.physical_device, &features2);
 	
-	VkDeviceCreateInfo device_info = {};
-	device_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
- 	device_info.pNext                   = &features;
- 	device_info.flags                   = 0;
- 	device_info.queueCreateInfoCount    = 1;
- 	device_info.pQueueCreateInfos       = &queue;
  	const char* device_exts[2] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME };
- 	device_info.enabledExtensionCount   = 2;
- 	device_info.ppEnabledExtensionNames = device_exts;
+	VkDeviceCreateInfo device_info = 
+	{
+		.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+	 	.pNext                   = &features2,
+	 	.flags                   = 0,
+	 	.queueCreateInfoCount    = 1,
+	 	.pQueueCreateInfos       = &queue,
+	 	.enabledLayerCount       = 0, // Deprecated
+	 	.ppEnabledLayerNames     = 0, // ^
+	 	.enabledExtensionCount   = 2,
+	 	.ppEnabledExtensionNames = device_exts,
+	 	.pEnabledFeatures        = 0
+	};
  	VK_VERIFY(vkCreateDevice(vk.physical_device, &device_info, 0, &vk.device));
 
 	vkGetDeviceQueue(vk.device, graphics_family_idx, 0, &vk.queue_graphics);
@@ -222,99 +247,6 @@ struct vk_context vk_init(struct vk_platform* platform)
 	vkMapMemory(vk.device, vk.host_visible_memory, 0, host_buf_size, 0, (void*)&vk.host_visible_mapped);
 
 	// Create graphics pipelines
-#define WORLD_DESCRIPTORS_COUNT 2
-	struct vk_descriptor_info world_descriptors[WORLD_DESCRIPTORS_COUNT] = 
-	{
-		{
-			.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.offset_in_buffer = offsetof(struct vk_host_memory, global),
-			.range_in_buffer  = sizeof(struct vk_ubo_global_world)
-		},
-		{
-			.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-			.offset_in_buffer = offsetof(struct vk_host_memory, instance),
-			.range_in_buffer  = sizeof(mat4)
-		}
-	};
-
-#define WORLD_ATTRIBUTES_COUNT 2
-	struct vk_attribute_description world_attributes[WORLD_ATTRIBUTES_COUNT] =
-	{
-		{
-			.format = VK_FORMAT_R32G32B32_SFLOAT,
-			.offset = offsetof(struct vk_cube_vertex, pos)
-		},
-		{
-			.format = VK_FORMAT_R32G32B32_SFLOAT,
-			.offset = offsetof(struct vk_cube_vertex, color)
-		}
-	};
-
-#define RETICLE_DESCRIPTORS_COUNT 1
-	struct vk_descriptor_info reticle_descriptors[RETICLE_DESCRIPTORS_COUNT] = 
-	{
-		{
-			.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.offset_in_buffer = 
-				offsetof(struct vk_host_memory, global) 
-				+ offsetof(struct vk_ubo_global, reticle),
-			.range_in_buffer  = sizeof(struct vk_ubo_global_reticle)
-		}
-	};
-
-#define RETICLE_ATTRIBUTES_COUNT 1
-	struct vk_attribute_description reticle_attributes[RETICLE_ATTRIBUTES_COUNT] =
-	{
-		{
-			.format = VK_FORMAT_R32G32_SFLOAT,
-			.offset = offsetof(struct vk_reticle_vertex, pos)
-		}
-	};
-
-#define PIPELINES_COUNT 2
-
-	struct pipeline_init_data
-	{
-		struct vk_pipeline_resources*    resources;
-		size_t                           vertex_stride;
-		
-		VkShaderModule                   vertex_shader;
-		VkShaderModule                   fragment_shader;
-
-		struct vk_descriptor_info*       descriptors;
-		uint8_t                          descriptors_len;
-
-		struct vk_attribute_description* attributes;
-		uint8_t                          attributes_len;
-	} pipeline_init_datas[PIPELINES_COUNT] = {
-		{
-			.resources       = &vk.pipeline_resources_world,
-			.vertex_stride   = sizeof(struct vk_cube_vertex),
-
-			.vertex_shader   = vk_create_shader_module(vk.device, "shaders/world_vert.spv"),
-			.fragment_shader = vk_create_shader_module(vk.device, "shaders/world_frag.spv"),
-
-			.descriptors     = world_descriptors,
-			.descriptors_len = WORLD_DESCRIPTORS_COUNT,
-
-			.attributes      = world_attributes,
-			.attributes_len  = WORLD_ATTRIBUTES_COUNT
-		},
-		{
-			.resources       = &vk.pipeline_resources_reticle,
-			.vertex_stride   = sizeof(struct vk_reticle_vertex),
-
-			.vertex_shader   = vk_create_shader_module(vk.device, "shaders/reticle_vert.spv"),
-			.fragment_shader = vk_create_shader_module(vk.device, "shaders/reticle_frag.spv"),
-
-			.descriptors     = reticle_descriptors,
-			.descriptors_len = RETICLE_DESCRIPTORS_COUNT,
-
-			.attributes      = reticle_attributes,
-			.attributes_len  = RETICLE_ATTRIBUTES_COUNT
-		}
-	};
-
 	// The following create infos aren't specific to an individual pipeline, so
 	// have been hoisted out of the below pipeline creation loop.
 
@@ -325,45 +257,69 @@ struct vk_context vk_init(struct vk_platform* platform)
 		VK_DYNAMIC_STATE_SCISSOR 
 	};
 
-	VkPipelineRenderingCreateInfoKHR pipeline_render_info = {};
-	pipeline_render_info.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR; 
-	pipeline_render_info.pNext                   = VK_NULL_HANDLE; 
-	pipeline_render_info.colorAttachmentCount    = 1; 
-	pipeline_render_info.pColorAttachmentFormats = &vk.surface_format.format;
-	pipeline_render_info.depthAttachmentFormat   = DEPTH_ATTACHMENT_FORMAT;
-	pipeline_render_info.stencilAttachmentFormat = 0;
+	VkPipelineRenderingCreateInfoKHR pipeline_render_info = 
+	{
+		.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+		.pNext                   = VK_NULL_HANDLE,
+		.viewMask                = 0,
+		.colorAttachmentCount    = 1,
+		.pColorAttachmentFormats = &vk.surface_format.format,
+		.depthAttachmentFormat   = DEPTH_ATTACHMENT_FORMAT,
+		.stencilAttachmentFormat = 0
+	};
 
-	VkPipelineDynamicStateCreateInfo dynamic_info = {};
-	dynamic_info.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	dynamic_info.dynamicStateCount = 2;
-	dynamic_info.pDynamicStates    = dyn_states;
+	VkPipelineDynamicStateCreateInfo dynamic_info = 
+	{
+		.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.pNext             = 0,
+		.flags             = 0,
+		.dynamicStateCount = 2,
+		.pDynamicStates    = dyn_states
+	};
 
-	VkPipelineViewportStateCreateInfo viewport_info = {};
-	viewport_info.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewport_info.viewportCount = 1;
-	viewport_info.scissorCount  = 1;
-	// pViewports and pScissors null because they're set later during rendering.
-	viewport_info.pViewports    = 0; 
-	viewport_info.pScissors     = 0;
+	VkPipelineViewportStateCreateInfo viewport_info = 
+	{
+		.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		.pNext         = 0,
+		.flags         = 0,
+		.viewportCount = 1,
+		.scissorCount  = 1,
+		// pViewports and pScissors null because they're set later during rendering.
+		.pViewports    = 0,
+		.pScissors     = 0
+	};
 
-	VkPipelineRasterizationStateCreateInfo raster_info = {};
-	raster_info.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	raster_info.depthClampEnable        = VK_FALSE;
-	raster_info.rasterizerDiscardEnable = VK_FALSE;
-	raster_info.polygonMode             = VK_POLYGON_MODE_FILL;
-	raster_info.lineWidth               = 1.0f;
-	raster_info.cullMode                = VK_CULL_MODE_NONE;
-	raster_info.frontFace               = VK_FRONT_FACE_CLOCKWISE;
-	raster_info.depthBiasEnable         = VK_FALSE;
-	raster_info.depthBiasConstantFactor = 0.0f;
-	raster_info.depthBiasClamp          = 0.0f;
-	raster_info.depthBiasSlopeFactor    = 0.0f;
+	VkPipelineRasterizationStateCreateInfo raster_info = 
+	{
+		.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		.pNext                   = 0,
+		.flags                   = 0,
+		.depthClampEnable        = VK_FALSE,
+		.rasterizerDiscardEnable = VK_FALSE,
+		.polygonMode             = VK_POLYGON_MODE_FILL,
+		.cullMode                = VK_CULL_MODE_NONE,
+		.frontFace               = VK_FRONT_FACE_CLOCKWISE,
+		.depthBiasEnable         = VK_FALSE,
+		.depthBiasConstantFactor = 0.0f,
+		.depthBiasClamp          = 0.0f,
+		.depthBiasSlopeFactor    = 0.0f,
+		.lineWidth               = 1.0f
+	};
 
-	VkPipelineMultisampleStateCreateInfo multisample_info = {};
-	multisample_info.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisample_info.sampleShadingEnable   = VK_FALSE;
-	multisample_info.rasterizationSamples  = vk.render_sample_count;
+	VkPipelineMultisampleStateCreateInfo multisample_info = 
+	{
+		.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		.pNext                 = 0,
+		.flags                 = 0,
+		.rasterizationSamples  = vk.render_sample_count,
+		.sampleShadingEnable   = VK_FALSE,
+		.minSampleShading      = VK_FALSE,
+		.pSampleMask           = 0,
+		.alphaToCoverageEnable = VK_FALSE,
+		.alphaToOneEnable      = VK_FALSE
+	};
 
+	// LATER - Keep up with the switch to curly initialization from here down.
 	VkPipelineColorBlendAttachmentState color_blend_attachment = {};
 	color_blend_attachment.colorWriteMask = 
 		VK_COLOR_COMPONENT_R_BIT | 
@@ -395,19 +351,150 @@ struct vk_context vk_init(struct vk_platform* platform)
 	input_assembly_info.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	input_assembly_info.primitiveRestartEnable = VK_FALSE;
 
+	// Configure pipeline-specific information here.
+#define WORLD_DESCRIPTORS_COUNT 3
+	struct vk_descriptor_config world_descriptors[WORLD_DESCRIPTORS_COUNT] = 
+	{
+		{
+			.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.stage_flags      = VK_SHADER_STAGE_VERTEX_BIT,
+			.offset_in_buffer = offsetof(struct vk_host_memory, global),
+			.range_in_buffer  = sizeof(struct vk_ubo_global_world)
+		},
+		{
+			.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+			.stage_flags      = VK_SHADER_STAGE_VERTEX_BIT,
+			.offset_in_buffer = offsetof(struct vk_host_memory, instance),
+			.range_in_buffer  = sizeof(mat4)
+		},
+		{
+			.type             = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.stage_flags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.offset_in_buffer = 0,
+			.range_in_buffer  = 0
+		}
+	};
+
+#define WORLD_ATTRIBUTES_COUNT 2
+	struct vk_attribute_description world_attributes[WORLD_ATTRIBUTES_COUNT] = 
+	{
+		{
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(struct vk_cube_vertex, pos)
+		},
+		{
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(struct vk_cube_vertex, color)
+		}
+	};
+
+	struct vk_descriptor_config reticle_descriptor = 
+	{
+		.type             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.stage_flags      = VK_SHADER_STAGE_VERTEX_BIT,
+		.offset_in_buffer = offsetof(struct vk_host_memory, global) + offsetof(struct vk_ubo_global, reticle),
+		.range_in_buffer  = sizeof(struct vk_ubo_global_reticle)
+	};
+
+	struct vk_attribute_description reticle_attribute = 
+	{
+		.format = VK_FORMAT_R32G32_SFLOAT,
+		.offset = offsetof(struct vk_reticle_vertex, pos)
+	};
+
+#define PIPELINES_COUNT 2
+
+	struct pipeline_init_data 
+	{
+		struct vk_pipeline_resources*    resources;
+		size_t                           vertex_stride;
+		
+		VkShaderModule                   vertex_shader;
+		VkShaderModule                   fragment_shader;
+
+		struct vk_descriptor_config*     descriptors;
+		uint8_t                          descriptors_len;
+
+		struct vk_attribute_description* attributes;
+		uint8_t                          attributes_len;
+	} pipeline_init_datas[PIPELINES_COUNT] = {
+		{
+			.resources       = &vk.pipeline_resources_world,
+			.vertex_stride   = sizeof(struct vk_cube_vertex),
+
+			.vertex_shader   = vk_create_shader_module(vk.device, "shaders/world_vert.spv"),
+			.fragment_shader = vk_create_shader_module(vk.device, "shaders/world_frag.spv"),
+
+			.descriptors     = world_descriptors,
+			.descriptors_len = WORLD_DESCRIPTORS_COUNT,
+
+			.attributes      = world_attributes,
+			.attributes_len  = WORLD_ATTRIBUTES_COUNT
+		},
+		{
+			.resources       = &vk.pipeline_resources_reticle,
+			.vertex_stride   = sizeof(struct vk_reticle_vertex),
+
+			.vertex_shader   = vk_create_shader_module(vk.device, "shaders/reticle_vert.spv"),
+			.fragment_shader = vk_create_shader_module(vk.device, "shaders/reticle_frag.spv"),
+
+			.descriptors     = &reticle_descriptor,
+			.descriptors_len = 1,
+
+			.attributes      = &reticle_attribute,
+			.attributes_len  = 1
+		} 
+	};
+
 	// Pipeline creation loop
 	for(uint8_t pipe_idx = 0; pipe_idx < PIPELINES_COUNT; pipe_idx++)
 	{
 		struct pipeline_init_data* pipe = &pipeline_init_datas[pipe_idx];
 		
 		VkDescriptorSetLayoutBinding descriptor_bindings[pipe->descriptors_len] = {};
+		VkDescriptorPoolSize         pool_sizes         [pipe->descriptors_len] = {};
+		VkWriteDescriptorSet         write_descriptors  [pipe->descriptors_len] = {};
+
 		for(uint8_t i = 0; i < pipe->descriptors_len; i++)
 		{
 			descriptor_bindings[i].binding         = i;
 			descriptor_bindings[i].descriptorType  = pipe->descriptors[i].type;
 			// CONSIDER - Multiple descriptors in a given binding?
 			descriptor_bindings[i].descriptorCount = 1; 
-			descriptor_bindings[i].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+			descriptor_bindings[i].stageFlags      = pipe->descriptors[i].stage_flags;
+
+			pool_sizes[i].type            = pipe->descriptors[i].type;
+			pool_sizes[i].descriptorCount = 1;
+
+			write_descriptors[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write_descriptors[i].dstSet          = pipe->resources->descriptor_set;
+			write_descriptors[i].dstBinding      = i;
+			write_descriptors[i].dstArrayElement = 0;
+			write_descriptors[i].descriptorType  = pipe->descriptors[i].type;
+			write_descriptors[i].descriptorCount = 1;
+
+			if(pipe->descriptors[i].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+			{
+				VkDescriptorBufferInfo buf_info = 
+				{
+					.buffer = vk.host_visible_buffer,
+					.offset = pipe->descriptors[i].offset_in_buffer,
+					.range  = pipe->descriptors[i].range_in_buffer 
+				};
+
+				write_descriptors[i].pBufferInfo = &buf_info;
+			}
+			else if(pipe->descriptors[i].type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+			{
+				VkDescriptorImageInfo image_info = 
+				{
+					.sampler     = vk.texture_sampler,
+					.imageView   = vk.texture_view,
+					.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+				};
+
+				write_descriptors[i].pImageInfo = &image_info;
+			}
 		}
 
 		VkDescriptorSetLayoutCreateInfo layout_info = {};
@@ -415,13 +502,6 @@ struct vk_context vk_init(struct vk_platform* platform)
 		layout_info.bindingCount = pipe->descriptors_len;
 		layout_info.pBindings    = descriptor_bindings;
 		VK_VERIFY(vkCreateDescriptorSetLayout(vk.device, &layout_info, 0, &pipe->resources->descriptor_layout));
-
-		VkDescriptorPoolSize pool_sizes[pipe->descriptors_len] = {};
-		for(uint8_t i = 0; i < pipe->descriptors_len; i++)
-		{
-			pool_sizes[i].type            = pipe->descriptors[i].type;
-			pool_sizes[i].descriptorCount = 1;
-		}
 
 		VkDescriptorPoolCreateInfo pool_info = {};
 		pool_info.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -436,23 +516,6 @@ struct vk_context vk_init(struct vk_platform* platform)
 		alloc_info.descriptorSetCount = 1;
 		alloc_info.pSetLayouts        = &pipe->resources->descriptor_layout;
 		VK_VERIFY(vkAllocateDescriptorSets(vk.device, &alloc_info, &pipe->resources->descriptor_set));
-
-		VkDescriptorBufferInfo buf_infos[pipe->descriptors_len] = {};
-		VkWriteDescriptorSet write_descriptors[pipe->descriptors_len] = {};
-		for(uint8_t i = 0; i < pipe->descriptors_len; i++)
-		{
-			buf_infos[i].buffer = vk.host_visible_buffer;
-			buf_infos[i].offset = pipe->descriptors[i].offset_in_buffer;
-			buf_infos[i].range  = pipe->descriptors[i].range_in_buffer;
-
-			write_descriptors[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			write_descriptors[i].dstSet          = pipe->resources->descriptor_set;
-			write_descriptors[i].dstBinding      = i;
-			write_descriptors[i].dstArrayElement = 0;
-			write_descriptors[i].descriptorType  = pipe->descriptors[i].type;
-			write_descriptors[i].descriptorCount = 1;
-			write_descriptors[i].pBufferInfo     = &buf_infos[i];
-		}
 
 		vkUpdateDescriptorSets(vk.device, pipe->descriptors_len, write_descriptors, 0, 0);
 
@@ -534,6 +597,131 @@ struct vk_context vk_init(struct vk_platform* platform)
 	buf_info.commandBufferCount = 1;
 	VK_VERIFY(vkAllocateCommandBuffers(vk.device, &buf_info, &vk.command_buffer));
 
+	// Create texture sampler.
+	VkSamplerCreateInfo sampler_info = 
+	{
+		.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.pNext                   = 0,
+		.flags                   = 0,
+		.magFilter               = VK_FILTER_LINEAR,
+		.minFilter               = VK_FILTER_LINEAR,
+		.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+		.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.mipLodBias              = 0.0f,
+		.anisotropyEnable        = VK_TRUE,
+		.maxAnisotropy           = vk.max_sampler_anisotropy,
+		.compareEnable           = VK_FALSE,
+		.compareOp               = VK_COMPARE_OP_ALWAYS,
+		.minLod                  = 0.0f,
+		.maxLod                  = 0.0f,
+		.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+		.unnormalizedCoordinates = VK_FALSE
+	};
+
+	VK_VERIFY(vkCreateSampler(vk.device, &sampler_info, 0, &vk.texture_sampler));
+
+	// Allocate texture image.
+	// Load image from disk.
+	int32_t tex_w;
+	int32_t tex_h;
+	int32_t tex_channels;
+	stbi_uc* pixels = stbi_load("stone.bmp", &tex_w, &tex_h, &tex_channels, STBI_rgb_alpha);
+	if(!pixels)
+	{
+		printf("Failed to load image file.\n");
+		PANIC();
+	}
+
+	// Allocate staging buffer.
+	VkDeviceSize img_size = tex_w * tex_h * 4;
+	VkBuffer staging_buf;
+	VkDeviceMemory staging_mem;
+
+	vk_allocate_buffer(
+		vk.device, 
+		vk.physical_device,
+		&staging_buf, 
+		&staging_mem,
+		img_size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	void* data;
+	vkMapMemory(vk.device, staging_mem, 0, img_size, 0, &data);
+	memcpy(data, pixels, (size_t)img_size);
+	vkUnmapMemory(vk.device, staging_mem);
+
+	stbi_image_free(pixels);
+
+	// Allocate image memory.
+	struct vk_image_allocation alloc =
+	{
+		.image        = &vk.texture_image,
+		.memory       = &vk.texture_memory,
+		.width        = tex_w,
+		.height       = tex_h,
+		.format       = VK_FORMAT_R8G8B8A8_SRGB,
+		.sample_count = VK_SAMPLE_COUNT_1_BIT,
+		.usage_mask   = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+	};
+	vk_allocate_image(vk.device, vk.physical_device, &alloc);
+
+	// Transfer image from staging buffer to 
+	VkCommandBuffer cmd = vk_start_transient_commands(vk.device, vk.command_pool);
+	{
+		vk_image_memory_barrier(
+			cmd,
+			vk.texture_image,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			0,
+			VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		VkBufferImageCopy region = 
+		{
+			.bufferOffset      = 0,
+			.bufferRowLength   = 0,
+			.bufferImageHeight = 0,
+			.imageSubresource  = (VkImageSubresourceLayers)
+			{ 
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1
+			},
+			.imageOffset       = (VkOffset3D){0, 0, 0},
+			.imageExtent       = (VkExtent3D){alloc.width, alloc.height, 1}
+		};
+
+		vkCmdCopyBufferToImage(
+			cmd,
+			staging_buf,
+			vk.texture_image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1,
+			&region);
+	}
+	vk_end_transient_commands(cmd, vk.queue_graphics, vk.device, vk.command_pool);
+
+	vkDestroyBuffer(vk.device, staging_buf, 0);
+	vkFreeMemory(vk.device, staging_mem, 0);
+
+	// Create texture image view
+	vk_create_image_view(
+		vk.device,
+		(struct vk_image_view_config)
+		{
+			.view        = &vk.texture_view,
+			.image       = vk.texture_image,
+			.format      = VK_FORMAT_R8G8B8A8_SRGB,
+			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
+		});
+
 	// Allocate device local memory buffer
 #define MESHES_LEN 2
 	// LATER - This will be made into a for loop once we have mesh assets.
@@ -571,7 +759,7 @@ struct vk_context vk_init(struct vk_platform* platform)
 		staging_buf_size += mesh_vert_buffer_sizes[i] + mesh_index_buffer_sizes[i];
 	}
 
-	VkBuffer staging_buf;
+	//VkBuffer       staging_buf;
 	VkDeviceMemory staging_buf_mem;
 
 	vk_allocate_buffer(
@@ -605,45 +793,14 @@ struct vk_context vk_init(struct vk_platform* platform)
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	// NOTE - This will almost need to be abstracted away, but wait until we have
-	// a real case.
-	VkCommandBufferAllocateInfo alloc_info = {};
-	alloc_info.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc_info.commandPool        = vk.command_pool;
-	alloc_info.commandBufferCount = 1;
-
-	VkCommandBuffer command_buf;
-	vkAllocateCommandBuffers(vk.device, &alloc_info, &command_buf);
-
-	VkCommandBufferBeginInfo begin_info = {};
-	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	vkBeginCommandBuffer(command_buf, &begin_info);
+	cmd = vk_start_transient_commands(vk.device, vk.command_pool);
 	{
 		VkBufferCopy copy = {};
 		copy.size = staging_buf_size;
-		vkCmdCopyBuffer(command_buf, staging_buf, vk.device_local_buffer, 1, &copy);
+		vkCmdCopyBuffer(cmd, staging_buf, vk.device_local_buffer, 1, &copy);
 	}
-	vkEndCommandBuffer(command_buf);
+	vk_end_transient_commands(cmd, vk.queue_graphics, vk.device, vk.command_pool);
 
-	VkSubmitInfo submit_info = {};
-	submit_info.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit_info.commandBufferCount = 1;
-	submit_info.pCommandBuffers    = &command_buf;
-
-	// CONSIDER  - We are using the graphics queue for this presently, but might
-	// we want to use a transfer queue for this?
-	// I'm not sure if there's any possible performance boost, and I'd rather not
-	// do it just for the sake of it.
-	// 
-	// High level on how this might be done at the following link:
-	// https://vulkan-tutorial.com/Vertex_buffers/Staging_buffer
-	vkQueueSubmit(vk.queue_graphics, 1, &submit_info, VK_NULL_HANDLE);
-	vkQueueWaitIdle(vk.queue_graphics);
-
-	vkFreeCommandBuffers(vk.device, vk.command_pool, 1, &command_buf);
 	vkDestroyBuffer(vk.device, staging_buf, 0);
 	vkFreeMemory(vk.device, staging_buf_mem, 0);
 

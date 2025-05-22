@@ -15,8 +15,6 @@ RENDERER: MAJOR TASKS
 -) Create new UBO structure. Probably want one for an imgui layer for now.
 
 NOTE - While doing these, keep refactoring old code to new standards, including:
--) Curly braces for initialization, no implicit zeroing of Vulkan stuff. gotta
-   look at the spec.
 -) Inlining repeated calls with initialization structures and for loops.
 -) VK_VERIFY unless we need to look at specific error codes, as when checking
    for swapchain recreation.

@@ -108,8 +108,12 @@ struct vk_context
 	VkSemaphore                  semaphore_image_available;
 	VkSemaphore                  semaphore_render_finished;
 
+	VkSampler                    texture_sampler;
+	float                        max_sampler_anisotropy;
+
 	VkImage                      texture_image;
 	VkDeviceMemory               texture_memory;
+	VkImageView                  texture_view;
 };
 
 struct vk_platform
@@ -129,13 +133,6 @@ struct vk_cube_vertex
 struct vk_reticle_vertex
 {
 	struct v2 pos;
-};
-
-struct vk_descriptor_info
-{
-	VkDescriptorType type;
-	VkDeviceSize offset_in_buffer;
-	VkDeviceSize range_in_buffer;
 };
 
 struct vk_attribute_description

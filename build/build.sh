@@ -1,7 +1,7 @@
 BIN=../bin
 
 CC=gcc
-EXE=le_chat_noir
+EXE=out
 SRC=../src/xcb/xcb_main.c
 INCLUDE=../src/
 LIBS="-lX11 -lX11-xcb -lm -lxcb -lxcb-xfixes -lxcb-keysyms -lvulkan"

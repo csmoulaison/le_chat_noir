@@ -67,19 +67,24 @@ void vk_allocate_image(
 	VkPhysicalDevice  physical_device,
 	struct vk_image_allocation* alloc)
 {
-	VkImageCreateInfo image_info = {};
-	image_info.sType 		 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	image_info.imageType     = VK_IMAGE_TYPE_2D;
-	image_info.extent.depth  = 1;
-	image_info.format        = alloc->format;
-	image_info.mipLevels     = 1;
-	image_info.arrayLayers   = 1;
-	image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
-	image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	image_info.extent.width  = alloc->width;
-	image_info.extent.height = alloc->height;
-	image_info.samples       = alloc->sample_count;
-	image_info.usage         = alloc->usage_mask;
+	VkImageCreateInfo image_info = 
+	{
+		.sType 		           = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.pNext                 = 0,
+		.flags                 = 0,
+		.imageType             = VK_IMAGE_TYPE_2D,
+		.format                = alloc->format,
+		.extent                = (VkExtent3D){alloc->width, alloc->height, 1},
+		.mipLevels             = 1,
+		.arrayLayers           = 1,
+		.samples               = alloc->sample_count,
+		.tiling                = VK_IMAGE_TILING_OPTIMAL,
+		.usage                 = alloc->usage_mask,
+		.sharingMode           = VK_SHARING_MODE_EXCLUSIVE,
+		.pQueueFamilyIndices   = 0,
+		.queueFamilyIndexCount = 0,
+		.initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED
+	};
 	VK_VERIFY(vkCreateImage(device, &image_info, 0, alloc->image));
 
 	VkMemoryRequirements requirements = {};
@@ -92,56 +97,4 @@ void vk_allocate_image(
 		requirements, 
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	VK_VERIFY(vkBindImageMemory(device, *alloc->image, *alloc->memory, 0));
-}
-
-// LATER - Currently unused, will be part of texture mapping implementation.
-void vk_allocate_texture(
-	VkDevice         device,
-	VkPhysicalDevice physical_device,
-	VkImage*         image,
-	VkDeviceMemory*  memory,
-	char*            fname)
-{
-	int32_t tex_w;
-	int32_t tex_h;
-	int32_t tex_channels;
-	stbi_uc* pixels = stbi_load(fname, &tex_w, &tex_h, &tex_channels, STBI_rgb_alpha);
-	if(!pixels)
-	{
-		printf("Failed to load image file: %s.\n", fname);
-		PANIC();
-	}
-
-	VkDeviceSize img_size = tex_w * tex_h * 4;
-	VkBuffer staging_buf;
-	VkDeviceMemory staging_mem;
-
-	vk_allocate_buffer(
-		device, 
-		physical_device,
-		&staging_buf, 
-		&staging_mem,
-		img_size,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-	void* data;
-	vkMapMemory(device, staging_mem, 0, img_size, 0, &data);
-	memcpy(data, pixels, (size_t)img_size);
-	vkUnmapMemory(device, staging_mem);
-
-	stbi_image_free(pixels);
-
-	struct vk_image_allocation alloc =
-	{
-		.image        = image,
-		.memory       = memory,
-		.width        = tex_w,
-		.height       = tex_h,
-		.format       = VK_FORMAT_R8G8B8A8_SRGB,
-		.sample_count = VK_SAMPLE_COUNT_1_BIT,
-		.usage_mask   = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-	};
-
-	vk_allocate_image(device, physical_device, &alloc);
 }

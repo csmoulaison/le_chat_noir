@@ -1,35 +1,3 @@
-void insert_image_memory_barrier(
-	VkCommandBuffer         command_buffer, 
-	VkImage                 image, 
-	VkImageAspectFlags      aspect_mask,
-	VkImageLayout           layout_old, 
-	VkImageLayout           layout_new, 
-	VkAccessFlags           src_access_mask,
-	VkAccessFlags           dst_access_mask,
-	VkPipelineStageFlagBits stage_src, 
-	VkPipelineStageFlagBits stage_dst) 
-{
-    VkImageSubresourceRange subresource_range = {};
-    subresource_range.aspectMask     = aspect_mask;
-    subresource_range.baseMipLevel   = 0;
-    subresource_range.levelCount     = 1;
-    subresource_range.baseArrayLayer = 0;
-    subresource_range.layerCount     = 1;
-
-    VkImageMemoryBarrier barrier = {};
-    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask       = src_access_mask;
-    barrier.dstAccessMask       = dst_access_mask;
-    barrier.oldLayout           = layout_old;
-    barrier.newLayout           = layout_new;
-    barrier.srcQueueFamilyIndex = 0;
-    barrier.dstQueueFamilyIndex = 0;
-    barrier.image               = image;
-    barrier.subresourceRange    = subresource_range;
-
-    vkCmdPipelineBarrier(command_buffer, stage_src, stage_dst, 0, 0, 0, 0, 0, 1, &barrier);
-}
-
 void vk_loop(struct vk_context* vk, struct render_group* render_group)
 {
 	// Translate game memory to uniform buffer object memory.
@@ -57,7 +25,6 @@ void vk_loop(struct vk_context* vk, struct render_group* render_group)
 	}
 	memcpy(vk->host_visible_mapped, &mem, sizeof(mem));
 
-
 	uint32_t image_idx;
 	VkResult res = vkAcquireNextImageKHR(
 		vk->device, 
@@ -77,7 +44,7 @@ void vk_loop(struct vk_context* vk, struct render_group* render_group)
 	vkBeginCommandBuffer(vk->command_buffer, &begin_info);
 	{
 		// Render image transfer
-		insert_image_memory_barrier(
+		vk_image_memory_barrier(
 			vk->command_buffer, 
 			vk->swap_images[image_idx], 
 			VK_IMAGE_ASPECT_COLOR_BIT,
@@ -85,12 +52,10 @@ void vk_loop(struct vk_context* vk, struct render_group* render_group)
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			0,
 			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			//VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			//VK_PIPELINE_STAGE_TRANSFER_BIT);
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 		// Depth image transfer
-		insert_image_memory_barrier(
+		vk_image_memory_barrier(
 			vk->command_buffer, 
 			vk->depth_image, 
 			VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -158,76 +123,74 @@ void vk_loop(struct vk_context* vk, struct render_group* render_group)
 			scissor.extent = vk->swap_extent;
 			vkCmdSetScissor(vk->command_buffer, 0, 1, &scissor);
 
-			{
-				vkCmdBindPipeline(
-					vk->command_buffer, 
-					VK_PIPELINE_BIND_POINT_GRAPHICS, 
-					vk->pipeline_resources_world.pipeline);
+			// Render world
+			vkCmdBindPipeline(
+				vk->command_buffer, 
+				VK_PIPELINE_BIND_POINT_GRAPHICS, 
+				vk->pipeline_resources_world.pipeline);
 
-				VkDeviceSize offsets[] = {vk->mesh_data_cube.buffer_offset_vertex};
-				vkCmdBindVertexBuffers(
-					vk->command_buffer, 
-					0, 
-					1, 
-					&vk->device_local_buffer,
-					offsets);
-				vkCmdBindIndexBuffer(
-					vk->command_buffer, 
-					vk->device_local_buffer, 
-					vk->mesh_data_cube.buffer_offset_index, 
-					VK_INDEX_TYPE_UINT16);
+			VkDeviceSize offsets[] = {vk->mesh_data_cube.buffer_offset_vertex};
+			vkCmdBindVertexBuffers(
+				vk->command_buffer, 
+				0, 
+				1, 
+				&vk->device_local_buffer,
+				offsets);
+			vkCmdBindIndexBuffer(
+				vk->command_buffer, 
+				vk->device_local_buffer, 
+				vk->mesh_data_cube.buffer_offset_index, 
+				VK_INDEX_TYPE_UINT16);
 
-				for(uint16_t i = 0; i < MAX_INSTANCES; i++) {
-					uint32_t dyn_off = i * sizeof(mat4);
-					vkCmdBindDescriptorSets(
-						vk->command_buffer, 
-						VK_PIPELINE_BIND_POINT_GRAPHICS, 
-						vk->pipeline_resources_world.pipeline_layout, 
-						0, 
-						1, 
-						&vk->pipeline_resources_world.descriptor_set,
-						1,
-						&dyn_off);
-
-					vkCmdDrawIndexed(vk->command_buffer, vk->mesh_data_cube.indices_len, 1, 0, 0, 0);
-				}
-			}
-
-			{
-				vkCmdBindPipeline(
-					vk->command_buffer, 
-					VK_PIPELINE_BIND_POINT_GRAPHICS, 
-					vk->pipeline_resources_reticle.pipeline);
-
-				VkDeviceSize offset = {vk->mesh_data_reticle.buffer_offset_vertex};
-				vkCmdBindVertexBuffers(
-					vk->command_buffer, 
-					0, 
-					1, 
-					&vk->device_local_buffer,
-					&offset);
-				vkCmdBindIndexBuffer(
-					vk->command_buffer, 
-					vk->device_local_buffer, 
-					vk->mesh_data_reticle.buffer_offset_index, 
-					VK_INDEX_TYPE_UINT16);
-
+			for(uint16_t i = 0; i < MAX_INSTANCES; i++) {
+				uint32_t dyn_off = i * sizeof(mat4);
 				vkCmdBindDescriptorSets(
 					vk->command_buffer, 
 					VK_PIPELINE_BIND_POINT_GRAPHICS, 
-					vk->pipeline_resources_reticle.pipeline_layout, 
+					vk->pipeline_resources_world.pipeline_layout, 
 					0, 
 					1, 
-					&vk->pipeline_resources_reticle.descriptor_set,
-					0,
-					0);
+					&vk->pipeline_resources_world.descriptor_set,
+					1,
+					&dyn_off);
 
-				vkCmdDrawIndexed(vk->command_buffer, vk->mesh_data_reticle.indices_len, 1, 0, 0, 0);
+				vkCmdDrawIndexed(vk->command_buffer, vk->mesh_data_cube.indices_len, 1, 0, 0, 0);
 			}
+
+			// Render UI layer
+			vkCmdBindPipeline(
+				vk->command_buffer, 
+				VK_PIPELINE_BIND_POINT_GRAPHICS, 
+				vk->pipeline_resources_reticle.pipeline);
+
+			VkDeviceSize offset = {vk->mesh_data_reticle.buffer_offset_vertex};
+			vkCmdBindVertexBuffers(
+				vk->command_buffer, 
+				0, 
+				1, 
+				&vk->device_local_buffer,
+				&offset);
+			vkCmdBindIndexBuffer(
+				vk->command_buffer, 
+				vk->device_local_buffer, 
+				vk->mesh_data_reticle.buffer_offset_index, 
+				VK_INDEX_TYPE_UINT16);
+
+			vkCmdBindDescriptorSets(
+				vk->command_buffer, 
+				VK_PIPELINE_BIND_POINT_GRAPHICS, 
+				vk->pipeline_resources_reticle.pipeline_layout, 
+				0, 
+				1, 
+				&vk->pipeline_resources_reticle.descriptor_set,
+				0,
+				0);
+
+			vkCmdDrawIndexed(vk->command_buffer, vk->mesh_data_reticle.indices_len, 1, 0, 0, 0);
 		}
 		vkCmdEndRendering(vk->command_buffer);
 
-		insert_image_memory_barrier(
+		vk_image_memory_barrier(
 			vk->command_buffer, 
 			vk->swap_images[image_idx], 
 			VK_IMAGE_ASPECT_COLOR_BIT,
